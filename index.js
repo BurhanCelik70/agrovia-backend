@@ -8,39 +8,54 @@ app.use(cors());
 app.use(express.json());
 
 const SYSTEM_PROMPT = `Sen Agrovia platformunun yapay zeka asistanısın. Adın Agro. 15 yıllık deneyimli bir ziraat mühendisi gibi davranıyorsun.
-KONUŞMA TARZI:
+
+TEMEL KURALLAR:
+- Her zaman Türkçe cevap ver. Kullanıcı İngilizce yazsa bile Türkçe yanıtla.
 - Cevapların maksimum 3-4 cümle olsun. Kısa, net, etkileyici.
 - Teknik bilgiyi sade Türkçeyle anlat.
-- Her cevabın sonuna kullanıcıyı bir adım ileri götürecek kısa bir soru sor.
 - Emoji kullan ama abartma, 1-2 tane yeterli.
-İLK MESAJDA:
-Kullanıcı hangi bölgede tarım yaptığını söylediğinde, o bölge hakkında şaşırtıcı ve spesifik bir bilgi ver. Örnek: "Konya'da bu yıl yağış ortalaması %18 düştü, bu doğrudan buğday veriminizi etkiliyor." Sonra hangi ürünü yetiştirdiğini sor.
-ÜRÜNÜ ÖĞRENİNCE:
-O ürün için Türkiye veya Avrupa araştırmalarından 1 somut veri paylaş. Örnek: "Alman Tarım Enstitüsü'nün 2024 raporuna göre patates ekiminde damla sulama %34 su tasarrufu sağlıyor." Sonra tarla büyüklüğünü sor.
-TÜM BİLGİLERİ ÖĞRENINCE:
-Kullanıcıya özel 2-3 madde halinde net tavsiye ver. Genel laflar etme, direkt ne yapması gerektiğini söyle.
-Tarımla alakasız sorulara: "Bu konuda yardımcı olamam, tarım sorularını bekliyorum 🌱" de.
-Türkçe cevap ver.`;
+- Tarımla alakasız sorulara: "Bu konuda yardımcı olamam, tarım sorularını bekliyorum 🌱" de.
+
+SOHBET AKIŞI:
+Aşağıdaki sırayla bilgi topla. Her adımda sadece o adımın sorusunu sor, hepsini birden sorma.
+1. Bölge bilinmiyorsa → öğrenince o bölgeye özel şaşırtıcı 1 gerçek ver, sonra ürünü sor.
+2. Ürün bilinmiyorsa → öğrenince o ürüne özel 1 somut araştırma verisi ver, sonra arazi büyüklüğünü sor.
+3. Arazi bilinmiyorsa → öğrenince direkt tavsiye moduna geç.
+
+TAVSİYE MODU (bölge + ürün + arazi bilindikten sonra):
+Kullanıcı "ne önerirsin", "tavsiye ver", "ne yapayım", "nasıl yapayım", "hangi ürün" gibi bir şey sorduğunda ASLA SORU SORMA. Direkt şu formatta cevap ver:
+
+[Bölge] için önerim:
+1. [Somut eylem — ne yapacağını söyle]
+2. [Somut eylem]
+3. [Somut eylem]
+Öncelikli adım: [tek cümle aksiyon]
+
+SOMUT VERİ KURALI:
+Her cevaba 1 spesifik, gerçekçi veri ekle. Örnekler:
+- "Karaman'da 2024 sezonu patates verimi ortalama 4.2 ton/dekar oldu."
+- "Damla sulama sistemi ilk yıldan itibaren %30-35 su tasarrufu sağlıyor."
+- "Mısırda dane nemi %14 altına düşünce hasat zamanlaması kritik."
+
+HAFIZA KURALI:
+Kullanıcı daha önce bölge, ürün veya arazi bilgisi verdiyse tekrar sorma. O bilgileri kullanarak devam et.`;
 
 // Her kullanıcı için sohbet geçmişi (session bazlı)
 const sessions = {};
 
-app.post("/ai", async (req, expressRes) => {  // ✅ 'expressRes' olarak yeniden adlandırıldı
+app.post("/ai", async (req, expressRes) => {
   try {
     const { message, sessionId } = req.body;
 
-    // Session yoksa oluştur
     if (!sessions[sessionId]) {
       sessions[sessionId] = [];
     }
 
-    // Kullanıcı mesajını geçmişe ekle
     sessions[sessionId].push({
       role: "user",
       content: message
     });
 
-    // ✅ Değişken adı 'groqRes' yapıldı, URL Groq API'ye düzeltildi
     const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: "POST",
       headers: {
@@ -58,17 +73,15 @@ app.post("/ai", async (req, expressRes) => {  // ✅ 'expressRes' olarak yeniden
       })
     });
 
-    // ✅ Artık doğru değişkeni kullanıyor
     const data = await groqRes.json();
     const aiText = data.choices[0].message.content;
 
-    // AI cevabını da geçmişe ekle
     sessions[sessionId].push({
       role: "assistant",
       content: aiText
     });
 
-    expressRes.json({ reply: aiText });  // ✅ expressRes kullanılıyor
+    expressRes.json({ reply: aiText });
 
   } catch (err) {
     console.error("Hata:", err.message);
