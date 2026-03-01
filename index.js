@@ -45,7 +45,7 @@ app.post("/ai", async (req, res) => {
       content: message
     });
 
-    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    const res = await fetch('https://agrovia-backend-production.up.railway.app/ai', {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${process.env.GROQ_API_KEY}`,
