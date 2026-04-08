@@ -1,10 +1,11 @@
-console.log("API KEY:", process.env.ANTHROPIC_API_KEY ? "BULUNDU" : "BULUNAMADI");
 import express from "express";
 import { config } from "dotenv";
 import cors from "cors";
 import Anthropic from "@anthropic-ai/sdk";
 
 config();
+
+console.log("API KEY:", process.env.ANTHROPIC_API_KEY ? "BULUNDU" : "BULUNAMADI");
 
 const app = express();
 app.use(cors());
@@ -64,7 +65,6 @@ app.post("/ai", async (req, expressRes) => {
       content: message
     });
 
-    // Son 20 mesajı tut (hafıza + maliyet dengesi)
     const recentMessages = sessions[sessionId].slice(-20);
 
     const response = await client.messages.create({
