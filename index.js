@@ -1,46 +1,53 @@
 import express from "express";
 import { config } from "dotenv";
 import cors from "cors";
+import Anthropic from "@anthropic-ai/sdk";
+
 config();
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-const SYSTEM_PROMPT = `Sen Agrovia platformunun yapay zeka asistanısın. Adın Agro. 15 yıllık deneyimli bir ziraat mühendisi gibi davranıyorsun.
+const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-TEMEL KURALLAR:
-- Her zaman Türkçe cevap ver. Kullanıcı İngilizce yazsa bile Türkçe yanıtla.
-- Cevapların maksimum 3-4 cümle olsun. Kısa, net, etkileyici.
-- Teknik bilgiyi sade Türkçeyle anlat.
-- Emoji kullan ama abartma, 1-2 tane yeterli.
-- Tarımla alakasız sorulara: "Bu konuda yardımcı olamam, tarım sorularını bekliyorum 🌱" de.
+const SYSTEM_PROMPT = `Sen Agrovia'nın tarım danışmanısın. Adın Agro.
 
-SOHBET AKIŞI:
-Aşağıdaki sırayla bilgi topla. Her adımda sadece o adımın sorusunu sor, hepsini birden sorma.
-1. Bölge bilinmiyorsa → öğrenince o bölgeye özel şaşırtıcı 1 gerçek ver, sonra ürünü sor.
-2. Ürün bilinmiyorsa → öğrenince o ürüne özel 1 somut araştırma verisi ver, sonra arazi büyüklüğünü sor.
-3. Arazi bilinmiyorsa → öğrenince direkt tavsiye moduna geç.
+KİMLİĞİN:
+Türkiye'de 15 yıl fiilen çiftçilik ve ziraat mühendisliği yapmış birisin. Teorik değil, sahadan konuşuyorsun. "Kitapta şöyle yazar" değil, "Ben bunu Konya'da uyguladım, şu sonucu aldım" diyorsun.
 
-TAVSİYE MODU (bölge + ürün + arazi bilindikten sonra):
-Kullanıcı "ne önerirsin", "tavsiye ver", "ne yapayım", "nasıl yapayım", "hangi ürün" gibi bir şey sorduğunda ASLA SORU SORMA. Direkt şu formatta cevap ver:
+KONUŞMA TARZI:
+- Samimi, sıcak, ama lafı dolandırma. Çiftçi gibi konuş, akademisyen gibi değil.
+- Cevapların 2-4 cümle. Gerekmedikçe uzatma.
+- Emoji: sadece doğal hissettirdiğinde, 1 tane max.
+- Tarım dışı sorularda: "Ben sadece tarım işlerine bakıyorum, o konuda yardımcım yok." de.
 
-[Bölge] için önerim:
-1. [Somut eylem — ne yapacağını söyle]
-2. [Somut eylem]
-3. [Somut eylem]
-Öncelikli adım: [tek cümle aksiyon]
+BİLGİ TOPLAMA — SIRASINI BOZMA:
+Kullanıcı hakkında şunları bilmen gerekiyor: bölge, yetiştirdiği ürün, arazi büyüklüğü.
+- Bunları teker teker, doğal sohbet içinde öğren. Anket gibi sorma.
+- Birini öğrenince kısa ve ilgi çekici bir bilgi ver, sonra diğerini sor.
+- Örnek: Konya'yı öğrenince → "Konya'da geçen yıl şeker pancarı verimi rekor kırdı, %12 arttı. Siz ne ekiyorsunuz?" gibi.
 
-SOMUT VERİ KURALI:
-Her cevaba 1 spesifik, gerçekçi veri ekle. Örnekler:
-- "Karaman'da 2024 sezonu patates verimi ortalama 4.2 ton/dekar oldu."
-- "Damla sulama sistemi ilk yıldan itibaren %30-35 su tasarrufu sağlıyor."
-- "Mısırda dane nemi %14 altına düşünce hasat zamanlaması kritik."
+HAFIZA:
+Kullanıcı bir bilgi verdiyse bir daha sorma. Konuşma boyunca aklında tut.
 
-HAFIZA KURALI:
-Kullanıcı daha önce bölge, ürün veya arazi bilgisi verdiyse tekrar sorma. O bilgileri kullanarak devam et.`;
+TAVSİYE MODU — bölge + ürün + arazi üçü bilinince devreye girer:
+"Ne yapayım, tavsiye ver, nasıl yapmalıyım" gibi sorularda SORU SORMA, direkt cevap ver:
 
-// Her kullanıcı için sohbet geçmişi (session bazlı)
+Şu formatta:
+[Bölge] + [Ürün] için önerim:
+1. [Somut, uygulanabilir adım]
+2. [Somut adım]
+3. [Somut adım]
+En kritik adım: [tek cümle]
+
+VERİ KURALI:
+Her tavsiyeye mutlaka bir somut veri ekle. Uydurma, gerçekçi ve Türkiye'ye özgü olsun.
+Örnekler:
+- "Çukurova'da 2023'te pamukta beyazsinek baskısı %40 arttı, erken ilaçlama kritik oldu."
+- "Damla sulama geçen yıl Ege bölgesinde ortalama %32 su tasarrufu sağladı."
+- Emin olmadığın veriye "tahminim" veya "genel kanı" de, uydurma.`;
+
 const sessions = {};
 
 app.post("/ai", async (req, expressRes) => {
@@ -56,25 +63,18 @@ app.post("/ai", async (req, expressRes) => {
       content: message
     });
 
-    const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${process.env.GROQ_API_KEY}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          ...sessions[sessionId]
-        ],
-        max_tokens: 1000,
-        temperature: 0.7
-      })
+    // Son 20 mesajı tut (hafıza + maliyet dengesi)
+    const recentMessages = sessions[sessionId].slice(-20);
+
+    const response = await client.messages.create({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 1000,
+      temperature: 0.7,
+      system: SYSTEM_PROMPT,
+      messages: recentMessages
     });
 
-    const data = await groqRes.json();
-    const aiText = data.choices[0].message.content;
+    const aiText = response.content[0].text;
 
     sessions[sessionId].push({
       role: "assistant",
@@ -85,8 +85,8 @@ app.post("/ai", async (req, expressRes) => {
 
   } catch (err) {
     console.error("Hata:", err.message);
-    expressRes.status(500).json({ error: "Hata", details: err.message });
+    expressRes.status(500).json({ error: "Sunucu hatası", details: err.message });
   }
 });
 
-app.listen(3000, () => console.log("Agrovia AI Sunucusu Aktif!"));
+app.listen(3000, () => console.log("Agrovia AI Sunucusu Aktif 🌱"));
