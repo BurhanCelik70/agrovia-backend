@@ -1,3 +1,4 @@
+console.log("API KEY:", process.env.ANTHROPIC_API_KEY ? "BULUNDU" : "BULUNAMADI");
 import express from "express";
 import { config } from "dotenv";
 import cors from "cors";
