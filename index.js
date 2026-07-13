@@ -60,9 +60,33 @@ app.post("/ai", async (req, expressRes) => {
       sessions[sessionId] = [];
     }
 
+    // Mesaj içine gömülü base64 fotoğrafı ayıkla (disease_screen ve ilac_sor_screen
+    // ikisi de "... (base64): <veri>" formatında gönderiyor)
+    const match = message.match(/\(base64\):\s*([A-Za-z0-9+/=]+)\s*$/);
+
+    let userContent;
+    if (match) {
+      const base64Data = match[1];
+      const textPart = message.slice(0, match.index).trim();
+
+      userContent = [
+        { type: "text", text: textPart },
+        {
+          type: "image",
+          source: {
+            type: "base64",
+            media_type: "image/png",
+            data: base64Data
+          }
+        }
+      ];
+    } else {
+      userContent = message;
+    }
+
     sessions[sessionId].push({
       role: "user",
-      content: message
+      content: userContent
     });
 
     const recentMessages = sessions[sessionId].slice(-20);
